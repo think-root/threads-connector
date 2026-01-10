@@ -29,13 +29,6 @@ func NewClient(userID, accessToken string) *Client {
 	}
 }
 
-type creationResponse struct {
-	ID string `json:"id"`
-}
-
-type publishResponse struct {
-	ID string `json:"id"`
-}
 
 // CreatePost creates a post, handling text splitting, images, and URL appending.
 func (c *Client) CreatePost(text string, imageURL string, externalURL string) (string, error) {
@@ -148,16 +141,15 @@ func (c *Client) createMediaContainer(text, imageURL, replyToID string) (string,
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("API error (create): %s - %s", resp.Status, string(body))
+		return "", c.parseError(resp.Body, resp.Status)
 	}
 
-	var result creationResponse
+	var result map[string]string
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", err
 	}
 
-	return result.ID, nil
+	return result["id"], nil
 }
 
 func (c *Client) publishMediaContainer(creationID string) (string, error) {
@@ -177,16 +169,50 @@ func (c *Client) publishMediaContainer(creationID string) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("API error (publish): %s - %s", resp.Status, string(body))
+		return "", c.parseError(resp.Body, resp.Status)
 	}
 
-	var result publishResponse
+	var result map[string]string
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", err
 	}
 
-	return result.ID, nil
+	return result["id"], nil
+}
+
+func (c *Client) parseError(body io.Reader, status string) error {
+	var errResp APIErrorResponse
+	b, err := io.ReadAll(body)
+	if err != nil {
+		return fmt.Errorf("API error: %s - failed to read body: %v", status, err)
+	}
+
+	if err := json.Unmarshal(b, &errResp); err != nil {
+		// Fallback to raw body if parsing fails
+		return fmt.Errorf("API error: %s - %s", status, string(b))
+	}
+
+	if errResp.Error.Message != "" {
+		errMsg := fmt.Sprintf("API error: %s - %s", status, errResp.Error.Message)
+		if errResp.Error.ErrorUserTitle != "" {
+			errMsg += fmt.Sprintf(" (%s: %s)", errResp.Error.ErrorUserTitle, errResp.Error.ErrorUserMsg)
+		}
+		return fmt.Errorf("%s", errMsg)
+	}
+
+	return fmt.Errorf("API error: %s - %s", status, string(b))
+}
+
+type APIErrorResponse struct {
+	Error struct {
+		Message        string `json:"message"`
+		Type           string `json:"type"`
+		Code           int    `json:"code"`
+		ErrorSubcode   int    `json:"error_subcode"`
+		ErrorUserTitle string `json:"error_user_title"`
+		ErrorUserMsg   string `json:"error_user_msg"`
+		FBTraceID      string `json:"fbtrace_id"`
+	} `json:"error"`
 }
 
 // splitText splits a string into chunks of max length, respecting word boundaries.
