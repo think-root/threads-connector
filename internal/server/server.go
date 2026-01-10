@@ -24,7 +24,9 @@ func New(cfg *config.Config, client *threads.Client) *Server {
 
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/threads/post", s.authMiddleware(s.handlePost))
+	// Wrap with logging and auth middleware
+	handler := s.loggingMiddleware(s.authMiddleware(s.handlePost))
+	mux.HandleFunc("/threads/post", handler)
 
 	log.Printf("Starting server on port %s", s.Config.Port)
 	return http.ListenAndServe(fmt.Sprintf(":%s", s.Config.Port), mux)
@@ -76,6 +78,15 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("Successfully created post: %s", postID)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(postResponse{PostID: postID})
+}
+
+func (s *Server) loggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Received %s request for %s", r.Method, r.URL.Path)
+		next(w, r)
+	}
 }
