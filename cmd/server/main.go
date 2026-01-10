@@ -17,8 +17,8 @@ func main() {
 
 	// Load configuration
 	cfg := config.Load()
-	if cfg.ThreadsUserID == "" || cfg.ThreadsAccessToken == "" {
-		log.Fatal("THREADS_USER_ID and THREADS_ACCESS_TOKEN must be set")
+	if cfg.ThreadsUserID == "" || cfg.ThreadsAccessToken == "" || cfg.APIKey == "" {
+		log.Fatal("THREADS_USER_ID, THREADS_ACCESS_TOKEN, and API_KEY must be set")
 	}
 
 	// Initialize Threads client
