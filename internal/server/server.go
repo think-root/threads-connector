@@ -24,10 +24,21 @@ func New(cfg *config.Config, client *threads.Client) *Server {
 
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/threads/post", s.handlePost)
+	mux.HandleFunc("/threads/post", s.authMiddleware(s.handlePost))
 
 	log.Printf("Starting server on port %s", s.Config.Port)
 	return http.ListenAndServe(fmt.Sprintf(":%s", s.Config.Port), mux)
+}
+
+func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		apiKey := r.Header.Get("X-API-Key")
+		if apiKey == "" || apiKey != s.Config.APIKey {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
 }
 
 type postRequest struct {
