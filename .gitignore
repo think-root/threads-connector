@@ -31,3 +31,4 @@ go.work.sum
 # .idea/
 # .vscode/
 .env.prod
+app_info.txt
