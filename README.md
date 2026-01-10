@@ -39,6 +39,7 @@ Before running the service, make sure you have:
    THREADS_USER_ID=your_threads_user_id
    THREADS_ACCESS_TOKEN=your_valid_access_token
    PORT=8080
+   API_KEY=your_secret_api_key
    ```
 4. **Run the server:**
 
@@ -61,6 +62,9 @@ Before running the service, make sure you have:
 
 Creates and publishes a Threads post (or thread if text is long).
 
+**Security:**
+Requires `X-API-Key` header with the value matching your `API_KEY` environment variable.
+
 #### Request
 
 **Content-Type:** `application/json`
@@ -78,6 +82,7 @@ Creates and publishes a Threads post (or thread if text is long).
 ```bash
 curl -X POST "http://localhost:8080/threads/post" \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your_secret_api_key" \
   -d '{"text": "Hello, Threads!"}'
 ```
 
@@ -86,6 +91,7 @@ curl -X POST "http://localhost:8080/threads/post" \
 ```bash
 curl -X POST "http://localhost:8080/threads/post" \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your_secret_api_key" \
   -d '{
     "text": "Check out this amazing view!",
     "image_url": "https://example.com/image.jpg",
