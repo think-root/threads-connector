@@ -1,0 +1,127 @@
+name: deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+
+  deploy:
+
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get repository name
+        id: repo_name
+        run: echo "repo=$(basename ${{ github.repository }})" >> $GITHUB_OUTPUT
+
+      - name: Execute remote commands via SSH
+        uses: appleboy/ssh-action@v1.1.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            set -e 
+
+            if ! systemctl is-active --quiet docker; then
+              echo "Docker is not running. Starting Docker..."
+              sudo systemctl start docker
+            fi
+
+            if [ ! -e /var/run/docker.sock ]; then
+              echo "Docker socket does not exist at /var/run/docker.sock"
+              exit 1
+            fi
+
+            if [ ! -w /var/run/docker.sock ]; then
+              echo "Current user does not have write access to Docker socket."
+              sudo chmod 666 /var/run/docker.sock
+            fi
+
+            if ! groups $USER | grep -q docker; then
+              echo "Adding $USER to docker group"
+              sudo usermod -aG docker $USER
+              newgrp docker
+            fi
+
+            echo "Docker setup complete. Proceeding with deployment."
+
+            REPO_NAME="${{ github.repository }}"
+            REPO_FOLDER="$HOME/apps/${REPO_NAME##*/}"
+
+            echo "Deploying $REPO_NAME to $REPO_FOLDER"
+
+            if ! command -v docker >/dev/null 2>&1; then
+              echo "Installing Docker..."
+              sudo apt-get update
+              sudo apt-get install -y docker.io
+            fi
+
+            if [ ! -d "$REPO_FOLDER" ]; then
+              echo "Cloning new version of the repository..."
+              git clone "https://github.com/${{ github.repository }}.git" "$REPO_FOLDER"
+            else
+              echo "Updating existing repository..."
+              cd "$REPO_FOLDER"
+              git pull origin main # Assuming 'main' branch
+            fi
+
+            cd "$REPO_FOLDER"
+
+            echo "Setting up .env file..."
+            echo "${{ secrets.ENV_PROD }}" > .env
+
+            # --- Zero-downtime deployment logic (minimal downtime) ---
+
+            # 1. Build the new image
+            echo "Building new Docker image..."
+            docker compose build threads-connector
+
+            # 2. Stop and remove the old container (if it exists)
+            OLD_CONTAINER_NAME="${{ steps.repo_name.outputs.repo }}"
+            if docker inspect "$OLD_CONTAINER_NAME" >/dev/null 2>&1; then
+              echo "Stopping old container: $OLD_CONTAINER_NAME"
+              docker stop "$OLD_CONTAINER_NAME"
+              echo "Removing old container: $OLD_CONTAINER_NAME"
+              docker rm "$OLD_CONTAINER_NAME"
+            else
+              echo "Old container ($OLD_CONTAINER_NAME) not found. Skipping stop/remove."
+            fi
+
+            # 3. Start the new container
+            echo "Starting new app via Docker Compose..."
+            docker compose up -d --no-deps threads-connector
+
+            # 4. Wait for the new container to be healthy
+            echo "Waiting for new container ($OLD_CONTAINER_NAME) to be healthy..."
+            HEALTH_STATUS=""
+            MAX_RETRIES=20 # Increased retries for healthcheck (20 * 10s = 200s)
+            RETRY_COUNT=0
+            while [ "$HEALTH_STATUS" != "healthy" ] && [ "$RETRY_COUNT" -lt "$MAX_RETRIES" ]; do
+              sleep 10 # Wait for 10 seconds before checking
+              HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$OLD_CONTAINER_NAME" 2>/dev/null || echo "not_found")
+              if [ "$HEALTH_STATUS" = "not_found" ]; then
+                echo "Container ($OLD_CONTAINER_NAME) not found. Something went wrong during startup."
+                exit 1
+              fi
+              echo "Current health status of $OLD_CONTAINER_NAME: $HEALTH_STATUS"
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+            done
+
+            if [ "$HEALTH_STATUS" != "healthy" ]; then
+              echo "Container ($OLD_CONTAINER_NAME) did not become healthy within the expected time. Aborting deployment."
+              docker logs "$OLD_CONTAINER_NAME"
+              exit 1
+            fi
+
+            echo "Deployment complete!"
+
+            echo "Checking container status..."
+            docker ps | grep "$OLD_CONTAINER_NAME" || echo "Container not found in running processes"
+
+            echo "Checking application logs..."
+            docker logs "$OLD_CONTAINER_NAME" --tail 50 || echo "Could not retrieve logs"
