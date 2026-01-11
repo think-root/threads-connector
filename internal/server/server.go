@@ -80,6 +80,13 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	textSnippet := req.Text
+	if len(textSnippet) > 50 {
+		textSnippet = textSnippet[:50] + "..."
+	}
+	log.Printf("Processing post request. Text: %q (len=%d), Image: %v, URL: %s", 
+		textSnippet, len(req.Text), req.ImageURL != "", req.URL)
+
 	postID, err := s.Client.CreatePost(req.Text, req.ImageURL, req.URL)
 	if err != nil {
 		log.Printf("Error creating post: %v", err)

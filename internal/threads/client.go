@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -134,18 +135,28 @@ func (c *Client) createMediaContainer(text, imageURL, replyToID string) (string,
 		params.Set("reply_to_id", replyToID)
 	}
 
+	log.Printf("Creating media container. Type: %s, HasText: %v, HasImage: %v", mediaType, text != "", imageURL != "")
+
 	resp, err := c.HTTPClient.PostForm(endpoint, params)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %v", err)
+	}
+	bodyString := string(bodyBytes)
+
+	log.Printf("[Threads API] Create Container Response: Status=%s Body=%s", resp.Status, bodyString)
+
 	if resp.StatusCode != http.StatusOK {
-		return "", c.parseError(resp.Body, resp.Status)
+		return "", c.parseError(bodyBytes, resp.Status)
 	}
 
 	var result map[string]string
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
 		return "", err
 	}
 
@@ -159,6 +170,8 @@ func (c *Client) publishMediaContainer(creationID string) (string, error) {
 	params.Set("creation_id", creationID)
 	params.Set("access_token", c.AccessToken)
 
+	log.Printf("Publishing media container: %s", creationID)
+
 	// Publishing can sometimes fail if container is not ready.
 	// Simple retry loop could be added here, but for now we trust standard flow.
 
@@ -168,28 +181,32 @@ func (c *Client) publishMediaContainer(creationID string) (string, error) {
 	}
 	defer resp.Body.Close()
 
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %v", err)
+	}
+	bodyString := string(bodyBytes)
+
+	log.Printf("[Threads API] Publish Response: Status=%s Body=%s", resp.Status, bodyString)
+
 	if resp.StatusCode != http.StatusOK {
-		return "", c.parseError(resp.Body, resp.Status)
+		return "", c.parseError(bodyBytes, resp.Status)
 	}
 
 	var result map[string]string
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
 		return "", err
 	}
 
 	return result["id"], nil
 }
 
-func (c *Client) parseError(body io.Reader, status string) error {
+func (c *Client) parseError(body []byte, status string) error {
 	var errResp APIErrorResponse
-	b, err := io.ReadAll(body)
-	if err != nil {
-		return fmt.Errorf("API error: %s - failed to read body: %v", status, err)
-	}
 
-	if err := json.Unmarshal(b, &errResp); err != nil {
+	if err := json.Unmarshal(body, &errResp); err != nil {
 		// Fallback to raw body if parsing fails
-		return fmt.Errorf("API error: %s - %s", status, string(b))
+		return fmt.Errorf("API error: %s - %s", status, string(body))
 	}
 
 	if errResp.Error.Message != "" {
@@ -200,7 +217,7 @@ func (c *Client) parseError(body io.Reader, status string) error {
 		return fmt.Errorf("%s", errMsg)
 	}
 
-	return fmt.Errorf("API error: %s - %s", status, string(b))
+	return fmt.Errorf("API error: %s - %s", status, string(body))
 }
 
 type APIErrorResponse struct {
