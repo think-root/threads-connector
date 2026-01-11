@@ -1,0 +1,21 @@
+services:
+  threads-connector:
+    build:
+      context: .
+      args:
+        PORT: ${PORT}
+      tags:
+        - "threads-connector:latest"
+    image: threads-connector:latest
+    container_name: threads-connector
+    ports:
+      - "${PORT}:${PORT}"
+    env_file:
+      - .env
+    restart: always
+    networks:
+      - think-root-network
+
+networks:
+  think-root-network:
+    external: true
