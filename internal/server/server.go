@@ -24,12 +24,21 @@ func New(cfg *config.Config, client *threads.Client) *Server {
 
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
+
+	// Health check - no auth, no logging
+	mux.HandleFunc("/health", s.handleHealth)
+
 	// Wrap with logging and auth middleware
 	handler := s.loggingMiddleware(s.authMiddleware(s.handlePost))
 	mux.HandleFunc("/threads/post", handler)
 
 	log.Printf("Starting server on port %s", s.Config.Port)
 	return http.ListenAndServe(fmt.Sprintf(":%s", s.Config.Port), mux)
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
 }
 
 func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
