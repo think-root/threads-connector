@@ -83,7 +83,7 @@ jobs:
 
             # 2. Stop and remove the old container (if it exists)
             OLD_CONTAINER_NAME="${{ steps.repo_name.outputs.repo }}"
-            if docker inspect "$OLD_CONTAINER_NAME" >/dev/null 2>&1; then
+            if docker inspect --type container "$OLD_CONTAINER_NAME" >/dev/null 2>&1; then
               echo "Stopping old container: $OLD_CONTAINER_NAME"
               docker stop "$OLD_CONTAINER_NAME"
               echo "Removing old container: $OLD_CONTAINER_NAME"
