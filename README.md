@@ -40,7 +40,7 @@ Before running the service, make sure you have:
 
    Then populate the required variables:
 
-   ```
+   ```bash
    THREADS_USER_ID=your_threads_user_id
    THREADS_ACCESS_TOKEN=your_valid_access_token
    PORT=8080
@@ -79,7 +79,7 @@ Requires `X-API-Key` header with the value matching your `API_KEY` environment v
 | ----------- | ------ | -------- | --------------------------------------------------------------------------- |
 | `text`      | string | No*      | Main post content. *Required if no image. Splits >500 chars.                |
 | `image_url` | string | No*      | Public URL of an image to attach (first post only). *Required if no text.   |
-| `url`       | string | No       | External link posted as a separate reply |
+| `url`       | string | No       | External link posted as a separate reply                                    |
 
 #### Examples
 
