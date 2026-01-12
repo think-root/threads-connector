@@ -33,7 +33,6 @@ func NewClient(userID, accessToken string) *Client {
 }
 
 func (c *Client) CreatePost(text string, imageURL string, externalURL string) (string, error) {
-	// 1. Split text into chunks
 	chunks := splitText(text, maxCharLimit)
 
 	// Note: externalURL will be posted as separate reply at the end
@@ -45,7 +44,6 @@ func (c *Client) CreatePost(text string, imageURL string, externalURL string) (s
 	var rootPostID string
 	var previousPostID string
 
-	// 2. Post text chunks
 	for i, chunk := range chunks {
 		// Use image only for the first chunk
 		currentImageURL := ""
@@ -66,7 +64,6 @@ func (c *Client) CreatePost(text string, imageURL string, externalURL string) (s
 			return "", fmt.Errorf("container %d not ready: %w", i, err)
 		}
 
-		// Publish
 		publishedID, err := c.publishMediaContainer(creationID)
 		if err != nil {
 			return "", fmt.Errorf("failed to publish chunk %d: %w", i, err)
@@ -182,7 +179,6 @@ func (c *Client) waitForContainerReady(containerID string) error {
 		case "EXPIRED":
 			return fmt.Errorf("container expired before publishing")
 		case "IN_PROGRESS":
-			// Keep waiting
 			time.Sleep(containerCheckInterval)
 		default:
 			// Unknown status, wait a bit and retry
