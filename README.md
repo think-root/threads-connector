@@ -5,10 +5,11 @@ This project is part of the [content-maestro](https://github.com/think-root/cont
 ## Description
 
 A Go-based HTTP API server that integrates with the Threads Graph API. It exposes REST endpoints for creating posts. It handles:
+
 - **Two-step posting process**: Creating a media container and publishing it.
 - **Auto-Threading**: Automatically splits long text (>500 chars) into multiple threaded posts.
 - **Image Support**: Attaching an image to the first post (requires a public URL).
-- **URL Handling**: Automatically appending an external link to the end of the thread.
+- **URL Handling**: Posts external URL as a separate reply for better user interaction (with link preview card).
 
 ## Prerequisites
 
@@ -17,7 +18,10 @@ Before running the service, make sure you have:
 - [Go](https://go.dev/dl/) 1.21+
 - A Threads Account
 - A Threads User ID
-- A valid [Threads Access Token](https://developers.facebook.com/docs/threads/overview) (User Token)
+- A valid [Threads Access Token](https://developers.facebook.com/docs/threads/overview) (User Token) with the following scopes:
+  - `threads_basic` — Required for all API calls
+  - `threads_content_publish` — Required for publishing posts
+  - `threads_manage_replies` — Required for posting URL as a separate reply
 
 ## Setup
 
@@ -27,6 +31,7 @@ Before running the service, make sure you have:
    ```bash
    go mod tidy
    ```
+
 3. **Create a `.env` file:**
 
    ```bash
@@ -41,6 +46,7 @@ Before running the service, make sure you have:
    PORT=8080
    API_KEY=your_secret_api_key
    ```
+
 4. **Run the server:**
 
    ```bash
@@ -73,7 +79,7 @@ Requires `X-API-Key` header with the value matching your `API_KEY` environment v
 | ----------- | ------ | -------- | --------------------------------------------------------------------------- |
 | `text`      | string | No*      | Main post content. *Required if no image. Splits >500 chars.                |
 | `image_url` | string | No*      | Public URL of an image to attach (first post only). *Required if no text.   |
-| `url`       | string | No       | External link to append to the end of the post/thread.                      |
+| `url`       | string | No       | External link posted as a separate reply |
 
 #### Examples
 
