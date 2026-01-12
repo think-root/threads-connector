@@ -232,6 +232,53 @@ type APIErrorResponse struct {
 	} `json:"error"`
 }
 
+// TokenInfo contains information about the access token validity
+type TokenInfo struct {
+	IsValid          bool   `json:"is_valid"`
+	ExpiresAt        int64  `json:"expires_at"`
+	DataAccessExpires int64 `json:"data_access_expires_at"`
+	Scopes           []string `json:"scopes"`
+	UserID           string `json:"user_id"`
+	Application      string `json:"application"`
+}
+
+type debugTokenResponse struct {
+	Data TokenInfo `json:"data"`
+}
+
+// ValidateToken checks if the access token is valid by calling the debug_token endpoint
+func (c *Client) ValidateToken() (*TokenInfo, error) {
+	endpoint := fmt.Sprintf("%s/debug_token", baseURL)
+
+	params := url.Values{}
+	params.Set("access_token", c.AccessToken)
+	params.Set("input_token", c.AccessToken)
+
+	fullURL := fmt.Sprintf("%s?%s", endpoint, params.Encode())
+
+	resp, err := c.HTTPClient.Get(fullURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.parseError(bodyBytes, resp.Status)
+	}
+
+	var result debugTokenResponse
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse token info: %w", err)
+	}
+
+	return &result.Data, nil
+}
+
 // splitText splits a string into chunks of max length, respecting word boundaries.
 func splitText(text string, limit int) []string {
 	if text == "" {
