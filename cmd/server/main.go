@@ -34,8 +34,9 @@ func main() {
 	} else {
 		expiresAt := time.Unix(tokenInfo.ExpiresAt, 0)
 		daysLeft := int(time.Until(expiresAt).Hours() / 24)
-		log.Printf("Threads access token is valid (expires: %s, %d days remaining)", 
+		log.Printf("Threads access token is valid (expires: %s, %d days remaining)",
 			expiresAt.Format("2006-01-02"), daysLeft)
+		// log.Printf("Token scopes: %v", tokenInfo.Scopes)
 	}
 
 	// Initialize and start server
