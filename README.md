@@ -121,6 +121,42 @@ curl -X POST "http://localhost:8080/threads/post" \
 }
 ```
 
+### POST `/threads/post/test`
+
+Publishes a test post to verify that the Threads API integration and posting method are working correctly. It uses hardcoded test text as the post body.
+
+**Security:**
+Requires `X-API-Key` header with the value matching your `API_KEY` environment variable.
+
+#### Request
+
+No request body is required.
+
+#### Examples
+
+**Test post:**
+
+```bash
+curl -X POST "http://localhost:8080/threads/post/test" \
+  -H "X-API-Key: your_secret_api_key"
+```
+
+#### Response (200 OK)
+
+```json
+{
+  "post_id": "1234567890"
+}
+```
+
+**Error:**
+
+```json
+{
+  "error": "Failed to create test post: ..."
+}
+```
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

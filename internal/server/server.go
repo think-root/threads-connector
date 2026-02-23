@@ -25,12 +25,13 @@ func New(cfg *config.Config, client *threads.Client) *Server {
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
 
-	// Health check - no auth, no logging
 	mux.HandleFunc("/health", s.handleHealth)
 
-	// Wrap with logging and auth middleware
 	handler := s.loggingMiddleware(s.authMiddleware(s.handlePost))
 	mux.HandleFunc("/threads/post", handler)
+
+	testHandler := s.loggingMiddleware(s.authMiddleware(s.handlePostTest))
+	mux.HandleFunc("/threads/post/test", testHandler)
 
 	log.Printf("Starting server on port %s", s.Config.Port)
 	return http.ListenAndServe(fmt.Sprintf(":%s", s.Config.Port), mux)
@@ -95,6 +96,29 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("Successfully created post: %s", postID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(postResponse{PostID: postID})
+}
+
+func (s *Server) handlePostTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	text := "Test post from threads-connector API"
+
+	log.Printf("Processing test post request. Text: %q", text)
+
+	postID, err := s.Client.CreatePost(text, "", "")
+	if err != nil {
+		log.Printf("Error creating test post: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to create test post: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Successfully created test post: %s", postID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(postResponse{PostID: postID})
