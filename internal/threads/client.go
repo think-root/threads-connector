@@ -253,18 +253,39 @@ func (c *Client) publishMediaContainer(creationID string) (string, error) {
 
 	log.Printf("Publishing media container: %s", creationID)
 
-	resp, err := c.HTTPClient.PostForm(endpoint, params)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
+	var resp *http.Response
+	var err error
+	var bodyBytes []byte
 
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %v", err)
+	for attempt := 1; attempt <= 5; attempt++ {
+		resp, err = c.HTTPClient.PostForm(endpoint, params)
+		if err != nil {
+			return "", err
+		}
+
+		bodyBytes, err = io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if err != nil {
+			return "", fmt.Errorf("failed to read response body: %v", err)
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			break
+		}
+
+		var errResp APIErrorResponse
+		if parseErr := json.Unmarshal(bodyBytes, &errResp); parseErr == nil {
+			if errResp.Error.Code == 24 && attempt < 5 {
+				log.Printf("Threads API error Code 24. Retrying in 10 seconds (attempt %d/5)...", attempt)
+				time.Sleep(10 * time.Second)
+				continue
+			}
+		}
+
+		break
 	}
 
-	// Log decoded response for readable Unicode
 	c.logDecodedResponse("[Threads API] Publish Response", resp.Status, bodyBytes)
 
 	if resp.StatusCode != http.StatusOK {
