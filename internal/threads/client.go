@@ -16,6 +16,8 @@ const (
 	maxCharLimit           = 500
 	containerReadyTimeout  = 30 * time.Second
 	containerCheckInterval = 2 * time.Second
+	maxAPIRetries          = 5
+	retryBaseDelay         = 2 * time.Second
 )
 
 type Client struct {
@@ -218,22 +220,13 @@ func (c *Client) createMediaContainer(text, imageURL, replyToID, linkAttachment 
 	log.Printf("Creating media container. Type: %s, HasText: %v, HasImage: %v, HasLinkAttachment: %v",
 		mediaType, text != "", imageURL != "", linkAttachment != "")
 
-	resp, err := c.HTTPClient.PostForm(endpoint, params)
+	statusCode, bodyBytes, err := c.postFormWithRetry(endpoint, params, "[Threads API] Create Container Response")
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %v", err)
-	}
-
-	// Log decoded response for readable Unicode
-	c.logDecodedResponse("[Threads API] Create Container Response", resp.Status, bodyBytes)
-
-	if resp.StatusCode != http.StatusOK {
-		return "", c.parseError(bodyBytes, resp.Status)
+	if statusCode != http.StatusOK {
+		return "", c.parseError(bodyBytes, http.StatusText(statusCode))
 	}
 
 	var result map[string]string
@@ -253,43 +246,13 @@ func (c *Client) publishMediaContainer(creationID string) (string, error) {
 
 	log.Printf("Publishing media container: %s", creationID)
 
-	var resp *http.Response
-	var err error
-	var bodyBytes []byte
-
-	for attempt := 1; attempt <= 5; attempt++ {
-		resp, err = c.HTTPClient.PostForm(endpoint, params)
-		if err != nil {
-			return "", err
-		}
-
-		bodyBytes, err = io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		if err != nil {
-			return "", fmt.Errorf("failed to read response body: %v", err)
-		}
-
-		if resp.StatusCode == http.StatusOK {
-			break
-		}
-
-		var errResp APIErrorResponse
-		if parseErr := json.Unmarshal(bodyBytes, &errResp); parseErr == nil {
-			if errResp.Error.Code == 24 && attempt < 5 {
-				log.Printf("Threads API error Code 24. Retrying in 10 seconds (attempt %d/5)...", attempt)
-				time.Sleep(10 * time.Second)
-				continue
-			}
-		}
-
-		break
+	statusCode, bodyBytes, err := c.postFormWithRetry(endpoint, params, "[Threads API] Publish Response")
+	if err != nil {
+		return "", err
 	}
 
-	c.logDecodedResponse("[Threads API] Publish Response", resp.Status, bodyBytes)
-
-	if resp.StatusCode != http.StatusOK {
-		return "", c.parseError(bodyBytes, resp.Status)
+	if statusCode != http.StatusOK {
+		return "", c.parseError(bodyBytes, http.StatusText(statusCode))
 	}
 
 	var result map[string]string
@@ -344,7 +307,54 @@ type APIErrorResponse struct {
 		ErrorUserTitle string `json:"error_user_title"`
 		ErrorUserMsg   string `json:"error_user_msg"`
 		FBTraceID      string `json:"fbtrace_id"`
+		IsTransient    bool   `json:"is_transient"`
 	} `json:"error"`
+}
+
+func isRetryableAPIError(statusCode int, errResp APIErrorResponse) bool {
+	if statusCode >= 500 {
+		return true
+	}
+	if errResp.Error.IsTransient {
+		return true
+	}
+	switch errResp.Error.Code {
+	case 1, 2, 4, 17, 24, 32:
+		return true
+	}
+	return false
+}
+
+func (c *Client) postFormWithRetry(endpoint string, params url.Values, logLabel string) (int, []byte, error) {
+	var statusCode int
+	var bodyBytes []byte
+	for attempt := 1; attempt <= maxAPIRetries; attempt++ {
+		resp, err := c.HTTPClient.PostForm(endpoint, params)
+		if err != nil {
+			return 0, nil, err
+		}
+		bodyBytes, err = io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return 0, nil, fmt.Errorf("failed to read response body: %v", err)
+		}
+		statusCode = resp.StatusCode
+		c.logDecodedResponse(logLabel, resp.Status, bodyBytes)
+		if statusCode == http.StatusOK {
+			return statusCode, bodyBytes, nil
+		}
+		var errResp APIErrorResponse
+		_ = json.Unmarshal(bodyBytes, &errResp)
+		if attempt < maxAPIRetries && isRetryableAPIError(statusCode, errResp) {
+			delay := retryBaseDelay * time.Duration(1<<uint(attempt-1))
+			log.Printf("%s: transient error (status=%d, code=%d, is_transient=%v). Retrying in %s (attempt %d/%d)...",
+				logLabel, statusCode, errResp.Error.Code, errResp.Error.IsTransient, delay, attempt, maxAPIRetries)
+			time.Sleep(delay)
+			continue
+		}
+		break
+	}
+	return statusCode, bodyBytes, nil
 }
 
 // TokenInfo contains information about the access token validity
